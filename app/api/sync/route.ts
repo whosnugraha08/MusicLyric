@@ -9,6 +9,7 @@ import { createClient } from '@supabase/supabase-js';
 // ────────────────────────────────────────────────────────────
 
 const WHISPERX_API_URL = process.env.WHISPERX_API_URL || 'https://shirothol-whisperx-align.hf.space';
+const HF_TOKEN = process.env.HF_TOKEN;
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
@@ -117,8 +118,14 @@ async function callGradioAPI(
   const audioFile = new File([audioBlob], 'audio.mp3', { type: audioBlob.type || 'audio/mpeg' });
   uploadFormData.append('files', audioFile);
 
+  const headers: Record<string, string> = {};
+  if (HF_TOKEN) {
+    headers['Authorization'] = `Bearer ${HF_TOKEN}`;
+  }
+
   const uploadRes = await fetch(`${WHISPERX_API_URL}/upload`, {
     method: 'POST',
+    headers,
     body: uploadFormData,
   });
 
@@ -130,10 +137,15 @@ async function callGradioAPI(
   const uploadData = await uploadRes.json();
   const uploadedFilePath = uploadData[0]; // Gradio returns array of file paths
 
+  const predictHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (HF_TOKEN) {
+    predictHeaders['Authorization'] = `Bearer ${HF_TOKEN}`;
+  }
+
   // Step 2: Call the predict endpoint
   const predictRes = await fetch(`${WHISPERX_API_URL}/api/predict`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: predictHeaders,
     body: JSON.stringify({
       data: [
         { path: uploadedFilePath, meta: { _type: 'gradio.FileData' } }, // audio
@@ -157,10 +169,15 @@ async function callGradioWithURL(
   rawLyrics: string,
 ): Promise<Array<{ text: string; start: number; end: number; words: Array<{ word: string; start: number; end: number; line_index: number }> }>> {
   
+  const callHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (HF_TOKEN) {
+    callHeaders['Authorization'] = `Bearer ${HF_TOKEN}`;
+  }
+
   // Try the /call/ endpoint (Gradio 4+ format)
   const callRes = await fetch(`${WHISPERX_API_URL}/call/align_lyrics`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: callHeaders,
     body: JSON.stringify({
       data: [
         { url: audioUrl },
@@ -177,8 +194,15 @@ async function callGradioWithURL(
   const callData = await callRes.json();
   const eventId = callData.event_id;
 
+  const pollHeaders: Record<string, string> = {};
+  if (HF_TOKEN) {
+    pollHeaders['Authorization'] = `Bearer ${HF_TOKEN}`;
+  }
+
   // Poll for result using SSE
-  const resultRes = await fetch(`${WHISPERX_API_URL}/call/align_lyrics/${eventId}`);
+  const resultRes = await fetch(`${WHISPERX_API_URL}/call/align_lyrics/${eventId}`, {
+    headers: pollHeaders
+  });
   const resultText = await resultRes.text();
   
   // Parse SSE response — look for "data:" lines
@@ -198,10 +222,15 @@ async function callGradioAlternative(
   rawLyrics: string,
 ): Promise<Array<{ text: string; start: number; end: number; words: Array<{ word: string; start: number; end: number; line_index: number }> }>> {
   
+  const callHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (HF_TOKEN) {
+    callHeaders['Authorization'] = `Bearer ${HF_TOKEN}`;
+  }
+
   // Try the /call/ endpoint
   const callRes = await fetch(`${WHISPERX_API_URL}/call/align_lyrics`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: callHeaders,
     body: JSON.stringify({
       data: [
         { path: filePath, meta: { _type: 'gradio.FileData' } },
@@ -218,8 +247,15 @@ async function callGradioAlternative(
   const callData = await callRes.json();
   const eventId = callData.event_id;
 
+  const pollHeaders: Record<string, string> = {};
+  if (HF_TOKEN) {
+    pollHeaders['Authorization'] = `Bearer ${HF_TOKEN}`;
+  }
+
   // Fetch the SSE result
-  const resultRes = await fetch(`${WHISPERX_API_URL}/call/align_lyrics/${eventId}`);
+  const resultRes = await fetch(`${WHISPERX_API_URL}/call/align_lyrics/${eventId}`, {
+    headers: pollHeaders
+  });
   const resultText = await resultRes.text();
 
   const dataLines = resultText.split('\n').filter(l => l.startsWith('data:'));
