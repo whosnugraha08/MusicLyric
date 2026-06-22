@@ -4,7 +4,7 @@ export const maxDuration = 60;
 import { createClient } from '@supabase/supabase-js';
 
 // ────────────────────────────────────────────────────────────
-// AI Sync API Route
+// AI Sync API Route — Gradio 6 (shiroThol/whisperx-align)
 // ────────────────────────────────────────────────────────────
 
 const WHISPERX_API_URL = process.env.WHISPERX_API_URL || 'https://shirothol-whisperx-align.hf.space';
@@ -19,18 +19,6 @@ function authHeaders(extra: Record<string, string> = {}): Record<string, string>
   const h: Record<string, string> = { ...extra };
   if (HF_TOKEN) h['Authorization'] = `Bearer ${HF_TOKEN}`;
   return h;
-}
-
-/** Safely parse JSON from a fetch response, throwing a descriptive error if it's not JSON */
-async function safeJson(res: Response, label: string): Promise<unknown> {
-  const text = await res.text();
-  try {
-    return JSON.parse(text);
-  } catch {
-    // Truncate response for error message
-    const preview = text.slice(0, 200).replace(/\n/g, ' ');
-    throw new Error(`${label}: expected JSON but got: "${preview}..."`);
-  }
 }
 
 export async function POST(request: NextRequest) {
@@ -66,63 +54,7 @@ export async function POST(request: NextRequest) {
 }
 
 // ────────────────────────────────────────────────────────────
-// Discover the correct Gradio API format
-// ────────────────────────────────────────────────────────────
-
-async function discoverAPI(): Promise<{ fnName: string; apiFormat: 'predict' | 'call' }> {
-  // Try /info first (Gradio 4+)
-  try {
-    const res = await fetch(`${WHISPERX_API_URL}/info`, { headers: authHeaders() });
-    if (res.ok) {
-      const info = await safeJson(res, '/info') as Record<string, unknown>;
-      if (info.named_endpoints && typeof info.named_endpoints === 'object') {
-        const endpoints = Object.keys(info.named_endpoints as object);
-        const fn = endpoints[0]?.replace(/^\//, '') || 'predict';
-        return { fnName: fn, apiFormat: 'call' };
-      }
-    }
-  } catch { /* ignore */ }
-
-  // Try /api/ endpoint (Gradio 3)
-  try {
-    const res = await fetch(`${WHISPERX_API_URL}/api/`, { headers: authHeaders() });
-    if (res.ok) return { fnName: 'predict', apiFormat: 'predict' };
-  } catch { /* ignore */ }
-
-  // Default to predict
-  return { fnName: 'predict', apiFormat: 'predict' };
-}
-
-// ────────────────────────────────────────────────────────────
-// Upload file to Gradio
-// ────────────────────────────────────────────────────────────
-
-async function uploadToGradio(audioUrl: string): Promise<string | null> {
-  // Download audio
-  const audioResponse = await fetch(audioUrl);
-  if (!audioResponse.ok) throw new Error('Failed to download audio file');
-  const audioBlob = await audioResponse.blob();
-
-  const formData = new FormData();
-  formData.append('files', new File([audioBlob], 'audio.mp3', { type: audioBlob.type || 'audio/mpeg' }));
-
-  try {
-    const res = await fetch(`${WHISPERX_API_URL}/upload`, {
-      method: 'POST',
-      headers: authHeaders(),
-      body: formData,
-    });
-    if (res.ok) {
-      const data = await safeJson(res, 'upload') as string[];
-      return data[0];
-    }
-  } catch { /* upload not supported */ }
-
-  return null;
-}
-
-// ────────────────────────────────────────────────────────────
-// Main WhisperX caller — tries multiple API formats
+// Gradio 6 API — /gradio_api/*
 // ────────────────────────────────────────────────────────────
 
 type SyncResult = Array<{
@@ -131,160 +63,89 @@ type SyncResult = Array<{
 }>;
 
 async function callWhisperX(audioUrl: string, rawLyrics: string): Promise<SyncResult> {
-  const errors: string[] = [];
+  // Step 1: Download audio
+  console.log('[WhisperX] Downloading audio...');
+  const audioResponse = await fetch(audioUrl);
+  if (!audioResponse.ok) throw new Error('Failed to download audio file');
+  const audioBlob = await audioResponse.blob();
 
-  // Try uploading file first
-  let filePath: string | null = null;
-  try {
-    filePath = await uploadToGradio(audioUrl);
-  } catch (e) {
-    errors.push(`Upload: ${e instanceof Error ? e.message : 'failed'}`);
-  }
+  // Step 2: Upload to Gradio
+  console.log('[WhisperX] Uploading to Gradio...');
+  const filePath = await uploadToGradio(audioBlob);
 
-  // Build the audio data payload for Gradio
-  const audioData = filePath
-    ? { path: filePath, meta: { _type: 'gradio.FileData' } }
-    : { url: audioUrl };
-
-  // Discover API format
-  const { fnName, apiFormat } = await discoverAPI();
-  console.log(`Gradio API: format=${apiFormat}, fn=${fnName}, filePath=${filePath ? 'yes' : 'no'}`);
-
-  // ── Strategy 1: /api/predict (Gradio 3 style, most compatible) ──
-  try {
-    const result = await tryPredict(audioData, rawLyrics);
-    return parseWhisperXOutput(result, rawLyrics);
-  } catch (e) {
-    errors.push(`/api/predict: ${e instanceof Error ? e.message : 'failed'}`);
-  }
-
-  // ── Strategy 2: /call/{fn} (Gradio 4 style) ──
-  try {
-    const result = await tryCall(fnName, audioData, rawLyrics);
-    return parseWhisperXOutput(result, rawLyrics);
-  } catch (e) {
-    errors.push(`/call/${fnName}: ${e instanceof Error ? e.message : 'failed'}`);
-  }
-
-  // ── Strategy 3: /api/predict with fn_index ──
-  try {
-    const result = await tryPredictWithIndex(audioData, rawLyrics);
-    return parseWhisperXOutput(result, rawLyrics);
-  } catch (e) {
-    errors.push(`/api/predict(fn_index): ${e instanceof Error ? e.message : 'failed'}`);
-  }
-
-  // ── Strategy 4: /run/{fn} (older Gradio) ──
-  try {
-    const result = await tryRun(fnName, audioData, rawLyrics);
-    return parseWhisperXOutput(result, rawLyrics);
-  } catch (e) {
-    errors.push(`/run/${fnName}: ${e instanceof Error ? e.message : 'failed'}`);
-  }
-
-  // ── Strategy 5: /queue/join (Gradio queue-based) ──
-  try {
-    const result = await tryQueue(audioData, rawLyrics);
-    return parseWhisperXOutput(result, rawLyrics);
-  } catch (e) {
-    errors.push(`/queue: ${e instanceof Error ? e.message : 'failed'}`);
-  }
-
-  throw new Error(`All API strategies failed:\n${errors.join('\n')}`);
-}
-
-// ────────────────────────────────────────────────────────────
-// API Strategy Implementations
-// ────────────────────────────────────────────────────────────
-
-async function tryPredict(audioData: unknown, lyrics: string): Promise<unknown> {
-  const res = await fetch(`${WHISPERX_API_URL}/api/predict`, {
+  // Step 3: Call /gradio_api/call/v2/align_lyrics with named params
+  console.log('[WhisperX] Calling align_lyrics...');
+  const callRes = await fetch(`${WHISPERX_API_URL}/gradio_api/call/v2/align_lyrics`, {
     method: 'POST',
     headers: authHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ data: [audioData, lyrics, 'id'] }),
+    body: JSON.stringify({
+      audio_file: {
+        path: filePath,
+        meta: { _type: 'gradio.FileData' },
+      },
+      lyrics_text: rawLyrics,
+      language: 'id',
+    }),
   });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  const data = await safeJson(res, '/api/predict') as Record<string, unknown>;
-  return (data.data as unknown[])?.[0] ?? data;
-}
 
-async function tryPredictWithIndex(audioData: unknown, lyrics: string): Promise<unknown> {
-  const res = await fetch(`${WHISPERX_API_URL}/api/predict`, {
-    method: 'POST',
-    headers: authHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ data: [audioData, lyrics, 'id'], fn_index: 0 }),
-  });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  const data = await safeJson(res, '/api/predict+fn_index') as Record<string, unknown>;
-  return (data.data as unknown[])?.[0] ?? data;
-}
+  if (!callRes.ok) {
+    const errText = await callRes.text();
+    throw new Error(`Gradio /call/v2/ failed (${callRes.status}): ${errText.slice(0, 200)}`);
+  }
 
-async function tryCall(fnName: string, audioData: unknown, lyrics: string): Promise<unknown> {
-  // POST /call/{fn}
-  const callRes = await fetch(`${WHISPERX_API_URL}/call/${fnName}`, {
-    method: 'POST',
-    headers: authHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ data: [audioData, lyrics, 'id'] }),
-  });
-  if (!callRes.ok) throw new Error(`${callRes.status} ${callRes.statusText}`);
-  const callData = await safeJson(callRes, `/call/${fnName}`) as Record<string, unknown>;
+  const callData = await callRes.json();
   const eventId = callData.event_id;
-  if (!eventId) throw new Error('No event_id in response');
+  if (!eventId) throw new Error('No event_id in Gradio response');
 
-  // GET /call/{fn}/{event_id}
-  const resultRes = await fetch(`${WHISPERX_API_URL}/call/${fnName}/${eventId}`, {
+  // Step 4: Poll for result via SSE
+  console.log(`[WhisperX] Polling event ${eventId}...`);
+  const resultRes = await fetch(`${WHISPERX_API_URL}/gradio_api/call/align_lyrics/${eventId}`, {
     headers: authHeaders(),
   });
-  const text = await resultRes.text();
-  const dataLines = text.split('\n').filter(l => l.startsWith('data:'));
+
+  const resultText = await resultRes.text();
+  console.log('[WhisperX] Raw SSE response length:', resultText.length);
+
+  // Parse SSE — look for "data:" lines
+  const dataLines = resultText.split('\n').filter(l => l.startsWith('data:'));
   const lastData = dataLines[dataLines.length - 1];
-  if (!lastData) throw new Error('No data in SSE response');
-  const parsed = JSON.parse(lastData.replace('data: ', ''));
-  return Array.isArray(parsed) ? parsed[0] : parsed;
-}
 
-async function tryRun(fnName: string, audioData: unknown, lyrics: string): Promise<unknown> {
-  const res = await fetch(`${WHISPERX_API_URL}/run/${fnName}`, {
-    method: 'POST',
-    headers: authHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ data: [audioData, lyrics, 'id'] }),
-  });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  const data = await safeJson(res, `/run/${fnName}`) as Record<string, unknown>;
-  return (data.data as unknown[])?.[0] ?? data;
-}
-
-async function tryQueue(audioData: unknown, lyrics: string): Promise<unknown> {
-  // Join queue
-  const joinRes = await fetch(`${WHISPERX_API_URL}/queue/join`, {
-    method: 'POST',
-    headers: authHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ data: [audioData, lyrics, 'id'], fn_index: 0 }),
-  });
-  if (!joinRes.ok) throw new Error(`${joinRes.status} ${joinRes.statusText}`);
-  const joinData = await safeJson(joinRes, '/queue/join') as Record<string, unknown>;
-  const hash = joinData.hash;
-  if (!hash) throw new Error('No hash in queue response');
-
-  // Poll for status
-  for (let i = 0; i < 30; i++) {
-    await new Promise(r => setTimeout(r, 2000));
-    const statusRes = await fetch(`${WHISPERX_API_URL}/queue/status`, {
-      method: 'POST',
-      headers: authHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ hash }),
-    });
-    if (!statusRes.ok) continue;
-    const statusData = await safeJson(statusRes, '/queue/status') as Record<string, unknown>;
-    if (statusData.status === 'COMPLETE') {
-      const d = statusData.data as Record<string, unknown> | unknown[] | undefined;
-      if (Array.isArray(d)) return d[0];
-      if (d && typeof d === 'object' && 'output' in d) return (d as Record<string, unknown>).output;
-      return statusData;
-    }
-    if (statusData.status === 'FAILED') throw new Error('Queue job failed');
+  if (!lastData) {
+    // Check for error event
+    const errorLines = resultText.split('\n').filter(l => l.includes('error'));
+    throw new Error(`No data in SSE response. Events: ${errorLines.join('; ') || resultText.slice(0, 300)}`);
   }
-  throw new Error('Queue polling timeout');
+
+  const parsed = JSON.parse(lastData.replace(/^data:\s*/, ''));
+  console.log('[WhisperX] Parsed response type:', typeof parsed, Array.isArray(parsed) ? `array[${parsed.length}]` : '');
+
+  // The response is the JSON output from the Gradio function
+  // It could be wrapped in an array or be the direct result
+  const output = Array.isArray(parsed) ? parsed[0] : parsed;
+
+  return parseWhisperXOutput(output, rawLyrics);
+}
+
+async function uploadToGradio(audioBlob: Blob): Promise<string> {
+  const formData = new FormData();
+  formData.append('files', new File([audioBlob], 'audio.mp3', { type: audioBlob.type || 'audio/mpeg' }));
+
+  const res = await fetch(`${WHISPERX_API_URL}/gradio_api/upload`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Gradio upload failed (${res.status}): ${errText.slice(0, 200)}`);
+  }
+
+  const data = await res.json();
+  // Returns array of file paths like ["/tmp/gradio/xxx/audio.mp3"]
+  const filePath = Array.isArray(data) ? data[0] : data;
+  console.log('[WhisperX] Uploaded file path:', filePath);
+  return filePath;
 }
 
 // ────────────────────────────────────────────────────────────
@@ -294,11 +155,13 @@ async function tryQueue(audioData: unknown, lyrics: string): Promise<unknown> {
 function parseWhisperXOutput(output: unknown, rawLyrics: string): SyncResult {
   const lines = rawLyrics.split('\n').filter(l => l.trim());
 
+  // Already in SyncedLine[] format
   if (Array.isArray(output)) {
     if (output.length > 0 && output[0].text && output[0].words) return output;
     if (output.length > 0 && output[0].word !== undefined) return groupWordsIntoLines(output, lines);
   }
 
+  // JSON string
   if (typeof output === 'string') {
     try {
       const parsed = JSON.parse(output);
@@ -309,6 +172,7 @@ function parseWhisperXOutput(output: unknown, rawLyrics: string): SyncResult {
     } catch { /* not JSON */ }
   }
 
+  // Object with segments
   if (output && typeof output === 'object' && 'segments' in output) {
     const segments = (output as { segments: Array<{ text: string; start: number; end: number; words?: Array<{ word: string; start: number; end: number }> }> }).segments;
     return segments.map((seg, i) => ({
@@ -319,6 +183,7 @@ function parseWhisperXOutput(output: unknown, rawLyrics: string): SyncResult {
     }));
   }
 
+  console.error('[WhisperX] Unexpected output:', JSON.stringify(output).slice(0, 500));
   throw new Error('Unexpected output format from WhisperX');
 }
 
