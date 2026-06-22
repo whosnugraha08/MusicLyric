@@ -8,12 +8,8 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-if (!supabaseUrl) {
-  throw new Error("Missing env: NEXT_PUBLIC_SUPABASE_URL");
-}
-
-if (!supabaseAnonKey) {
-  throw new Error("Missing env: NEXT_PUBLIC_SUPABASE_ANON_KEY");
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.warn("⚠️ Missing Supabase environment variables. Make sure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY are set.");
 }
 
 // ────────────────────────────────────────────────────────────
@@ -22,8 +18,8 @@ if (!supabaseAnonKey) {
 // ────────────────────────────────────────────────────────────
 
 export const supabase: SupabaseClient = createClient(
-  supabaseUrl,
-  supabaseAnonKey,
+  supabaseUrl || "https://placeholder.supabase.co",
+  supabaseAnonKey || "placeholder",
   {
     auth: {
       persistSession: false, // single-user tool, no auth sessions
