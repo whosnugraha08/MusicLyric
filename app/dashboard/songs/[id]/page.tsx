@@ -72,6 +72,10 @@ export default function SongDetailPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  // AI Sync
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
+
   // ── Fetch Song ─────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
@@ -142,7 +146,43 @@ export default function SongDetailPage() {
     setTimeout(() => setSaveSuccess(false), 2500);
   }, [song, editTitle, editArtist, editLyrics]);
 
-  // ── Delete Song ────────────────────────────────────────
+  // ── Handle AI Sync ───────────────────────────────────────
+  const handleAISync = async () => {
+    if (!song) return;
+    setIsSyncing(true);
+    setSyncError(null);
+
+    try {
+      const response = await fetch('/api/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ songId: song.id }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to sync with AI');
+      }
+
+      // Success! Refetch song data
+      const { data: newSongData, error } = await supabase
+        .from('songs')
+        .select('*')
+        .eq('id', song.id)
+        .single();
+        
+      if (!error && newSongData) {
+        setSong(newSongData as Song);
+      }
+    } catch (err) {
+      setSyncError(err instanceof Error ? err.message : 'Unknown error occurred');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // ── Handle Delete ────────────────────────────────────────
   const handleDelete = useCallback(async () => {
     if (!song) return;
     setDeleting(true);
@@ -295,22 +335,43 @@ export default function SongDetailPage() {
 
       {/* Action Buttons */}
       <div className="mt-8 flex flex-wrap gap-3">
-        {/* AI Sync — Coming Soon */}
-        <div className="group relative">
+        {/* AI Sync */}
+        <div className="group relative flex flex-col gap-1">
           <button
-            disabled
-            className="flex cursor-not-allowed items-center gap-2 rounded-xl bg-white/[0.04] px-4 py-2.5 text-sm font-medium text-gray-500 opacity-60"
+            onClick={handleAISync}
+            disabled={isSyncing || !song?.audio_url || !song?.raw_lyrics}
+            className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors ${
+              isSyncing || !song?.audio_url || !song?.raw_lyrics
+                ? 'cursor-not-allowed bg-white/[0.04] text-gray-500 opacity-60'
+                : 'bg-indigo-500/15 text-indigo-400 hover:bg-indigo-500/25'
+            }`}
           >
-            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 2a4 4 0 0 0-4 4v4h8V6a4 4 0 0 0-4-4z" />
-              <rect x="3" y="10" width="18" height="12" rx="2" />
-              <circle cx="12" cy="16" r="1" />
-            </svg>
-            Sinkronkan dengan AI
+            {isSyncing ? (
+              <svg className="h-4 w-4 animate-spin text-indigo-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            ) : (
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 2a4 4 0 0 0-4 4v4h8V6a4 4 0 0 0-4-4z" />
+                <rect x="3" y="10" width="18" height="12" rx="2" />
+                <circle cx="12" cy="16" r="1" />
+              </svg>
+            )}
+            {isSyncing ? 'Menyinkronkan...' : 'Sinkronkan dengan AI'}
           </button>
-          <div className="pointer-events-none absolute -top-10 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-lg bg-surface-100 px-3 py-1.5 text-[11px] text-gray-400 opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
-            Segera hadir — lihat docs/WHISPERX_SETUP.md
-          </div>
+          
+          {syncError && (
+            <div className="text-xs text-red-400 mt-1 max-w-[200px] break-words">
+              Error: {syncError}
+            </div>
+          )}
+          
+          {(!song?.audio_url || !song?.raw_lyrics) && (
+            <div className="pointer-events-none absolute -top-10 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-lg bg-surface-100 px-3 py-1.5 text-[11px] text-gray-400 opacity-0 shadow-lg transition-opacity group-hover:opacity-100 z-10">
+              Butuh audio dan lirik mentah
+            </div>
+          )}
         </div>
 
         {/* Manual Tap-to-Sync */}
