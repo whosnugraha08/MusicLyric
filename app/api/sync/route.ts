@@ -93,9 +93,15 @@ async function callWhisperX(audioUrl: string, rawLyrics: string): Promise<SyncRe
     throw new Error(`Gradio /call/v2/ failed (${callRes.status}): ${errText.slice(0, 200)}`);
   }
 
-  const callData = await callRes.json();
+  const callText = await callRes.text();
+  let callData: Record<string, unknown>;
+  try {
+    callData = JSON.parse(callText);
+  } catch {
+    throw new Error(`Gradio call response is not JSON: ${callText.slice(0, 300)}`);
+  }
   const eventId = callData.event_id;
-  if (!eventId) throw new Error('No event_id in Gradio response');
+  if (!eventId) throw new Error(`No event_id in Gradio response: ${callText.slice(0, 200)}`);
 
   // Step 4: Poll for result via SSE
   console.log(`[WhisperX] Polling event ${eventId}...`);
@@ -116,7 +122,16 @@ async function callWhisperX(audioUrl: string, rawLyrics: string): Promise<SyncRe
     throw new Error(`No data in SSE response. Events: ${errorLines.join('; ') || resultText.slice(0, 300)}`);
   }
 
-  const parsed = JSON.parse(lastData.replace(/^data:\s*/, ''));
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(lastData.replace(/^data:\s*/, ''));
+  } catch {
+    throw new Error(`Failed to parse SSE data: ${lastData.slice(0, 300)}`);
+  }
+  // Check if the result is an error from WhisperX
+  if (parsed && typeof parsed === 'object' && 'error' in parsed) {
+    throw new Error(`WhisperX error: ${(parsed as Record<string,string>).error?.slice(0, 300)}`);
+  }
   console.log('[WhisperX] Parsed response type:', typeof parsed, Array.isArray(parsed) ? `array[${parsed.length}]` : '');
 
   // The response is the JSON output from the Gradio function
@@ -141,11 +156,17 @@ async function uploadToGradio(audioBlob: Blob): Promise<string> {
     throw new Error(`Gradio upload failed (${res.status}): ${errText.slice(0, 200)}`);
   }
 
-  const data = await res.json();
+  const uploadText = await res.text();
+  let data: unknown;
+  try {
+    data = JSON.parse(uploadText);
+  } catch {
+    throw new Error(`Gradio upload response is not JSON: ${uploadText.slice(0, 300)}`);
+  }
   // Returns array of file paths like ["/tmp/gradio/xxx/audio.mp3"]
   const filePath = Array.isArray(data) ? data[0] : data;
   console.log('[WhisperX] Uploaded file path:', filePath);
-  return filePath;
+  return filePath as string;
 }
 
 // ────────────────────────────────────────────────────────────
