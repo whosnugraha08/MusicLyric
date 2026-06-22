@@ -199,13 +199,13 @@ export default function PlayerPage() {
   const isLandscape = layout === 'landscape';
 
   return (
-    <div className="relative min-h-screen overflow-hidden select-none">
+    <div className="fixed inset-0 overflow-hidden select-none bg-[#050508]">
       {/* ── Background ──────────────────────────────────────── */}
       <DynamicBackground coverUrl={song.cover_url} />
 
       {/* ── Top controls bar ────────────────────────────────── */}
       <div
-        className={`fixed top-0 inset-x-0 z-40 flex items-center justify-between px-4 sm:px-6 py-3 transition-all duration-500 ${
+        className={`absolute top-0 inset-x-0 z-40 flex items-center justify-between px-4 sm:px-6 h-16 transition-all duration-500 ${
           presentation && !controlsVisible
             ? 'opacity-0 -translate-y-4 pointer-events-none'
             : 'opacity-100 translate-y-0'
@@ -269,9 +269,9 @@ export default function PlayerPage() {
 
       {/* ── Main content ────────────────────────────────────── */}
       <main
-        className={`flex min-h-screen pb-20 pt-16 transition-all duration-500 ${
+        className={`absolute inset-0 pt-16 pb-20 flex transition-all duration-500 ${
           isLandscape
-            ? 'flex-row items-stretch'
+            ? 'flex-row items-center'
             : 'flex-col items-center'
         }`}
       >
@@ -298,7 +298,7 @@ export default function PlayerPage() {
                 className={`relative rounded-2xl shadow-2xl object-cover ${
                   isLandscape
                     ? 'w-full max-h-[70vh] aspect-square'
-                    : 'w-48 h-48 sm:w-56 sm:h-56 mx-auto'
+                    : 'w-48 h-48 sm:w-56 sm:h-56 mx-auto flex-shrink-0'
                 }`}
               />
             </div>
