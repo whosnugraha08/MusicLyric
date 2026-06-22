@@ -6,6 +6,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import type { Song, SyncStatus } from '@/lib/types';
 import { supabase } from '@/lib/supabase';
+import { processWhisperXSync } from '@/lib/whisperx';
 
 // ────────────────────────────────────────────────────────────
 // Status Badge Config
@@ -74,6 +75,7 @@ export default function SongDetailPage() {
 
   // AI Sync
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
 
   // ── Fetch Song ─────────────────────────────────────────
@@ -148,28 +150,28 @@ export default function SongDetailPage() {
 
   // ── Handle AI Sync ───────────────────────────────────────
   const handleAISync = async () => {
-    if (!song) return;
+    if (!song || !song.audio_url || !song.raw_lyrics) return;
     setIsSyncing(true);
     setSyncError(null);
+    setSyncProgress('Memulai sinkronisasi...');
 
     try {
-      const response = await fetch('/api/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ songId: song.id }),
+      // 1. Update status to processing
+      await supabase.from('songs').update({ sync_status: 'processing' }).eq('id', song.id);
+
+      // 2. Run sync directly from browser to bypass Vercel 60s timeout
+      const syncedLyrics = await processWhisperXSync(song.audio_url, song.raw_lyrics, (msg) => {
+        setSyncProgress(msg);
       });
 
-      const text = await response.text();
-      let data: any;
-      try {
-        data = JSON.parse(text);
-      } catch (err) {
-        throw new Error(`Server returned non-JSON response (${response.status}): ${text.slice(0, 150)}...`);
-      }
+      // 3. Save result to Supabase
+      setSyncProgress('Menyimpan hasil...');
+      const { error: updateError } = await supabase
+        .from('songs')
+        .update({ synced_lyrics: syncedLyrics, sync_status: 'synced' })
+        .eq('id', song.id);
 
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to sync with AI');
-      }
+      if (updateError) throw new Error(updateError.message);
 
       // Success! Refetch song data
       const { data: newSongData, error } = await supabase
@@ -182,9 +184,12 @@ export default function SongDetailPage() {
         setSong(newSongData as Song);
       }
     } catch (err) {
+      console.error('AI Sync error:', err);
+      await supabase.from('songs').update({ sync_status: 'failed' }).eq('id', song.id);
       setSyncError(err instanceof Error ? err.message : 'Unknown error occurred');
     } finally {
       setIsSyncing(false);
+      setSyncProgress(null);
     }
   };
 
@@ -364,7 +369,7 @@ export default function SongDetailPage() {
                 <circle cx="12" cy="16" r="1" />
               </svg>
             )}
-            {isSyncing ? 'Menyinkronkan...' : 'Sinkronkan dengan AI'}
+            {isSyncing ? (syncProgress || 'Menyinkronkan...') : 'Sinkronkan dengan AI'}
           </button>
           
           {syncError && (
