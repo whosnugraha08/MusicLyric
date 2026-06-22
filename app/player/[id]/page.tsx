@@ -24,6 +24,8 @@ export default function PlayerPage() {
   // ── Player state ──────────────────────────────────────────
   const playerRef = useRef<AudioPlayerHandle>(null);
   const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [playing, setPlaying] = useState(false);
   const [lyricMode, setLyricMode] = useState<'line' | 'word'>('word');
 
   // ── Layout & presentation ─────────────────────────────────
@@ -197,9 +199,6 @@ export default function PlayerPage() {
 
   const syncedLines: SyncedLine[] = song.synced_lyrics;
   const isLandscape = layout === 'landscape';
-  // ── Player state extras ─────────────────────────────────────
-  const [duration, setDuration] = useState(0);
-  const [playing, setPlaying] = useState(false);
 
   const togglePlay = () => {
     if (playerRef.current?.isPlaying()) {
