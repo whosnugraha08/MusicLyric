@@ -103,16 +103,19 @@ export default function LyricDisplay({
     }
   }, [activeIndex, scrollToActive]);
 
-  // Initial scroll to first line on mount
+  // Initial scroll – ensure first lyric is visible on mount
   useEffect(() => {
-    if (activeIndex < 0 && syncedLyrics.length > 0) {
-      // Small delay to ensure DOM is fully rendered before scrolling
+    if (syncedLyrics.length > 0) {
       const timer = setTimeout(() => {
-        scrollToActive(0);
-      }, 100);
+        const container = containerRef.current;
+        if (container) {
+          container.scrollTop = 0;
+        }
+      }, 50);
       return () => clearTimeout(timer);
     }
-  }, [syncedLyrics.length, scrollToActive]); // Only run on mount or when lyrics array changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [syncedLyrics.length]);
 
   // ── Ref callback ──────────────────────────────────────────
   const setLineRef = useCallback(
@@ -140,7 +143,7 @@ export default function LyricDisplay({
       ref={containerRef}
       className={`relative h-full overflow-y-auto hide-scrollbar px-4 sm:px-8 ${className ?? ''}`}
     >
-      <div className="h-[40vh] flex-shrink-0" />
+      <div className="h-[20vh] flex-shrink-0" />
       <div className="flex flex-col items-center gap-6">
         {syncedLyrics.map((line, i) => {
           const dist = activeIndex >= 0 ? i - activeIndex : i;

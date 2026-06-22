@@ -197,6 +197,34 @@ export default function PlayerPage() {
 
   const syncedLines: SyncedLine[] = song.synced_lyrics;
   const isLandscape = layout === 'landscape';
+  // ── Player state extras ─────────────────────────────────────
+  const [duration, setDuration] = useState(0);
+  const [playing, setPlaying] = useState(false);
+
+  const togglePlay = () => {
+    if (playerRef.current?.isPlaying()) {
+      playerRef.current.pause();
+    } else {
+      playerRef.current?.play();
+    }
+  };
+
+  const skipBackward = () => {
+    playerRef.current?.seek(Math.max(0, (playerRef.current?.getCurrentTime() ?? 0) - 10));
+  };
+
+  const skipForward = () => {
+    playerRef.current?.seek((playerRef.current?.getCurrentTime() ?? 0) + 10);
+  };
+
+  const formatTime = (s: number) => {
+    if (!isFinite(s) || s < 0) return '0:00';
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${sec.toString().padStart(2, '0')}`;
+  };
+
+  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
     <div className="fixed inset-0 overflow-hidden select-none bg-[#050508]">
@@ -205,7 +233,7 @@ export default function PlayerPage() {
 
       {/* ── Top controls bar ────────────────────────────────── */}
       <div
-        className={`absolute top-0 inset-x-0 z-40 flex items-center justify-between px-4 sm:px-6 h-16 transition-all duration-500 ${
+        className={`absolute top-0 inset-x-0 z-40 flex items-center justify-between px-4 sm:px-6 h-14 transition-all duration-500 ${
           presentation && !controlsVisible
             ? 'opacity-0 -translate-y-4 pointer-events-none'
             : 'opacity-100 translate-y-0'
@@ -221,12 +249,6 @@ export default function PlayerPage() {
           </svg>
           <span className="hidden sm:inline">Kembali</span>
         </button>
-
-        {/* Song info */}
-        <div className="absolute left-1/2 -translate-x-1/2 text-center max-w-xs sm:max-w-lg truncate">
-          <h1 className="text-sm font-semibold text-white truncate">{song.title}</h1>
-          <p className="text-xs text-white/40 truncate">{song.artist}</p>
-        </div>
 
         {/* Right controls */}
         <div className="flex items-center gap-2">
@@ -269,22 +291,23 @@ export default function PlayerPage() {
 
       {/* ── Main content ────────────────────────────────────── */}
       <main
-        className={`absolute inset-0 pt-16 pb-20 flex transition-all duration-500 ${
+        className={`absolute inset-0 pt-14 flex transition-all duration-500 ${
           isLandscape
-            ? 'flex-row items-center max-w-7xl mx-auto w-full'
+            ? 'flex-row max-w-7xl mx-auto w-full'
             : 'flex-col items-center'
         }`}
       >
-        {/* Cover Art */}
-        {song.cover_url && (
-          <div
-            className={`flex-shrink-0 flex items-center justify-center ${
-              isLandscape
-                ? 'w-[40%] max-w-lg p-8 lg:p-12'
-                : 'w-full pt-4 pb-2 px-8'
-            }`}
-          >
-            <div className="relative group">
+        {/* ── Left panel: Cover + Info + Controls ────────── */}
+        <div
+          className={`flex-shrink-0 flex flex-col items-center justify-center ${
+            isLandscape
+              ? 'w-[38%] max-w-md p-6 lg:p-10 gap-5'
+              : 'w-full pt-3 pb-2 px-6 gap-3'
+          }`}
+        >
+          {/* Cover Art */}
+          {song.cover_url && (
+            <div className="relative group flex-shrink-0">
               {/* Glow behind cover */}
               <div
                 className="absolute -inset-6 rounded-3xl opacity-40 blur-3xl transition-opacity group-hover:opacity-60"
@@ -297,18 +320,103 @@ export default function PlayerPage() {
                 alt={`${song.title} cover`}
                 className={`relative rounded-2xl shadow-2xl object-cover ${
                   isLandscape
-                    ? 'w-full max-h-[70vh] aspect-square'
-                    : 'w-48 h-48 sm:w-56 sm:h-56 mx-auto flex-shrink-0'
+                    ? 'w-full max-w-[280px] aspect-square'
+                    : 'w-40 h-40 sm:w-48 sm:h-48'
                 }`}
               />
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Lyrics */}
+          {/* Title & Artist */}
+          <div className={`text-center w-full max-w-[280px] ${isLandscape ? '' : 'mt-1'}`}>
+            <h2 className="text-base sm:text-lg font-bold text-white truncate">{song.title}</h2>
+            <p className="text-sm text-white/50 truncate">{song.artist}</p>
+          </div>
+
+          {/* Progress bar */}
+          {song.audio_url && (
+            <div className="w-full max-w-[280px] space-y-1.5">
+              {/* Clickable progress track */}
+              <div
+                className="group relative h-1 w-full cursor-pointer rounded-full overflow-hidden transition-all hover:h-1.5"
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                  const newTime = ratio * duration;
+                  playerRef.current?.seek(newTime);
+                }}
+              >
+                <div className="absolute inset-0 bg-white/10 rounded-full" />
+                <div
+                  className="absolute inset-y-0 left-0 bg-gradient-to-r from-primary-400 to-accent-400 rounded-full transition-all"
+                  style={{ width: `${progress}%` }}
+                />
+                {/* Knob */}
+                <div
+                  className="absolute top-1/2 -translate-y-1/2 h-3 w-3 rounded-full bg-white shadow-lg shadow-primary-500/40 opacity-0 group-hover:opacity-100 transition-opacity"
+                  style={{ left: `calc(${progress}% - 6px)` }}
+                />
+              </div>
+              {/* Time labels */}
+              <div className="flex justify-between text-[10px] text-white/40 font-mono tabular-nums">
+                <span>{formatTime(currentTime)}</span>
+                <span>{formatTime(duration)}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Play controls */}
+          {song.audio_url && (
+            <div className="flex items-center gap-6">
+              {/* Skip backward 10s */}
+              <button
+                onClick={skipBackward}
+                className="text-white/50 hover:text-white transition-colors active:scale-90"
+                title="Mundur 10 detik"
+              >
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M1 4v6h6" />
+                  <path d="M3.51 15a9 9 0 105.64-12.36L3 9" />
+                </svg>
+              </button>
+
+              {/* Play / Pause */}
+              <button
+                onClick={togglePlay}
+                className="flex items-center justify-center h-12 w-12 rounded-full bg-white text-black hover:scale-105 transition-all active:scale-95 shadow-lg"
+                aria-label={playing ? 'Pause' : 'Play'}
+              >
+                {playing ? (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="5" y="3" width="5" height="18" rx="1" />
+                    <rect x="14" y="3" width="5" height="18" rx="1" />
+                  </svg>
+                ) : (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M6 3.5v17a1 1 0 001.5.86l14-8.5a1 1 0 000-1.72l-14-8.5A1 1 0 006 3.5z" />
+                  </svg>
+                )}
+              </button>
+
+              {/* Skip forward 10s */}
+              <button
+                onClick={skipForward}
+                className="text-white/50 hover:text-white transition-colors active:scale-90"
+                title="Maju 10 detik"
+              >
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M23 4v6h-6" />
+                  <path d="M20.49 15a9 9 0 11-5.64-12.36L21 9" />
+                </svg>
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* ── Right panel: Lyrics ────────────────────────── */}
         <div
-          className={`flex-1 min-h-0 ${
-            isLandscape ? 'overflow-hidden' : 'flex-1 w-full'
+          className={`flex-1 min-h-0 min-w-0 ${
+            isLandscape ? 'h-full' : 'flex-1 w-full'
           }`}
         >
           <LyricDisplay
@@ -325,23 +433,20 @@ export default function PlayerPage() {
         </div>
       </main>
 
-      {/* ── Audio player bar ────────────────────────────────── */}
+      {/* ── Hidden audio element (no bottom bar) ──────────── */}
       {song.audio_url && (
-        <div
-          className={`transition-all duration-500 ${
-            presentation && !controlsVisible
-              ? 'opacity-0 translate-y-4 pointer-events-none'
-              : 'opacity-100 translate-y-0'
-          }`}
-        >
-          <AudioPlayer
-            ref={playerRef}
-            src={song.audio_url}
-            title={song.title}
-            artist={song.artist}
-            onTimeUpdate={setCurrentTime}
-          />
-        </div>
+        <AudioPlayer
+          ref={playerRef}
+          src={song.audio_url}
+          title={song.title}
+          artist={song.artist}
+          onTimeUpdate={(t) => {
+            setCurrentTime(t);
+            setPlaying(playerRef.current?.isPlaying() ?? false);
+          }}
+          onDurationChange={setDuration}
+          className="hidden-player"
+        />
       )}
     </div>
   );

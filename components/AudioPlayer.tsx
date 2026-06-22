@@ -146,6 +146,21 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(
     const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
     const bufferedPercent = duration > 0 ? (buffered / duration) * 100 : 0;
 
+    // ── Hidden mode: only render the <audio> element ────────
+    if (className?.includes('hidden-player')) {
+      return (
+        <audio
+          ref={audioRef}
+          src={src}
+          preload="auto"
+          onLoadedMetadata={handleLoadedMetadata}
+          onPlay={handlePlay}
+          onPause={handlePause}
+          onEnded={handleEnded}
+        />
+      );
+    }
+
     return (
       <>
         {/* Hidden audio element */}
