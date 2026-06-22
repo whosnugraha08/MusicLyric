@@ -21,6 +21,18 @@ function authHeaders(extra: Record<string, string> = {}): Record<string, string>
   return h;
 }
 
+/** Safely parse JSON from a fetch response, throwing a descriptive error if it's not JSON */
+async function safeJson(res: Response, label: string): Promise<unknown> {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    // Truncate response for error message
+    const preview = text.slice(0, 200).replace(/\n/g, ' ');
+    throw new Error(`${label}: expected JSON but got: "${preview}..."`);
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { songId } = await request.json();
@@ -62,10 +74,9 @@ async function discoverAPI(): Promise<{ fnName: string; apiFormat: 'predict' | '
   try {
     const res = await fetch(`${WHISPERX_API_URL}/info`, { headers: authHeaders() });
     if (res.ok) {
-      const info = await res.json();
-      // info.named_endpoints or info.unnamed_endpoints
-      if (info.named_endpoints) {
-        const endpoints = Object.keys(info.named_endpoints);
+      const info = await safeJson(res, '/info') as Record<string, unknown>;
+      if (info.named_endpoints && typeof info.named_endpoints === 'object') {
+        const endpoints = Object.keys(info.named_endpoints as object);
         const fn = endpoints[0]?.replace(/^\//, '') || 'predict';
         return { fnName: fn, apiFormat: 'call' };
       }
@@ -102,8 +113,8 @@ async function uploadToGradio(audioUrl: string): Promise<string | null> {
       body: formData,
     });
     if (res.ok) {
-      const data = await res.json();
-      return data[0]; // file path on server
+      const data = await safeJson(res, 'upload') as string[];
+      return data[0];
     }
   } catch { /* upload not supported */ }
 
@@ -193,8 +204,8 @@ async function tryPredict(audioData: unknown, lyrics: string): Promise<unknown> 
     body: JSON.stringify({ data: [audioData, lyrics, 'id'] }),
   });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  const data = await res.json();
-  return data.data?.[0] ?? data;
+  const data = await safeJson(res, '/api/predict') as Record<string, unknown>;
+  return (data.data as unknown[])?.[0] ?? data;
 }
 
 async function tryPredictWithIndex(audioData: unknown, lyrics: string): Promise<unknown> {
@@ -204,8 +215,8 @@ async function tryPredictWithIndex(audioData: unknown, lyrics: string): Promise<
     body: JSON.stringify({ data: [audioData, lyrics, 'id'], fn_index: 0 }),
   });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  const data = await res.json();
-  return data.data?.[0] ?? data;
+  const data = await safeJson(res, '/api/predict+fn_index') as Record<string, unknown>;
+  return (data.data as unknown[])?.[0] ?? data;
 }
 
 async function tryCall(fnName: string, audioData: unknown, lyrics: string): Promise<unknown> {
@@ -216,7 +227,7 @@ async function tryCall(fnName: string, audioData: unknown, lyrics: string): Prom
     body: JSON.stringify({ data: [audioData, lyrics, 'id'] }),
   });
   if (!callRes.ok) throw new Error(`${callRes.status} ${callRes.statusText}`);
-  const callData = await callRes.json();
+  const callData = await safeJson(callRes, `/call/${fnName}`) as Record<string, unknown>;
   const eventId = callData.event_id;
   if (!eventId) throw new Error('No event_id in response');
 
@@ -239,8 +250,8 @@ async function tryRun(fnName: string, audioData: unknown, lyrics: string): Promi
     body: JSON.stringify({ data: [audioData, lyrics, 'id'] }),
   });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  const data = await res.json();
-  return data.data?.[0] ?? data;
+  const data = await safeJson(res, `/run/${fnName}`) as Record<string, unknown>;
+  return (data.data as unknown[])?.[0] ?? data;
 }
 
 async function tryQueue(audioData: unknown, lyrics: string): Promise<unknown> {
@@ -251,7 +262,7 @@ async function tryQueue(audioData: unknown, lyrics: string): Promise<unknown> {
     body: JSON.stringify({ data: [audioData, lyrics, 'id'], fn_index: 0 }),
   });
   if (!joinRes.ok) throw new Error(`${joinRes.status} ${joinRes.statusText}`);
-  const joinData = await joinRes.json();
+  const joinData = await safeJson(joinRes, '/queue/join') as Record<string, unknown>;
   const hash = joinData.hash;
   if (!hash) throw new Error('No hash in queue response');
 
@@ -264,9 +275,12 @@ async function tryQueue(audioData: unknown, lyrics: string): Promise<unknown> {
       body: JSON.stringify({ hash }),
     });
     if (!statusRes.ok) continue;
-    const statusData = await statusRes.json();
+    const statusData = await safeJson(statusRes, '/queue/status') as Record<string, unknown>;
     if (statusData.status === 'COMPLETE') {
-      return statusData.data?.output?.data?.[0] ?? statusData.data?.[0] ?? statusData;
+      const d = statusData.data as Record<string, unknown> | unknown[] | undefined;
+      if (Array.isArray(d)) return d[0];
+      if (d && typeof d === 'object' && 'output' in d) return (d as Record<string, unknown>).output;
+      return statusData;
     }
     if (statusData.status === 'FAILED') throw new Error('Queue job failed');
   }
