@@ -409,7 +409,7 @@ export default function TapSyncPage() {
       </div>
 
       {/* ── Bottom action bar ───────────────────────────────── */}
-      <div className="fixed bottom-0 inset-x-0 z-40">
+      <div className="fixed bottom-0 inset-x-0 z-40 lg:pl-64">
         {/* Player */}
         {song.audio_url && (
           <AudioPlayer
@@ -419,6 +419,7 @@ export default function TapSyncPage() {
             artist={song.artist}
             onTimeUpdate={setCurrentTime}
             onDurationChange={setDuration}
+            className="lg:pl-64"
           />
         )}
 
