@@ -1,0 +1,279 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Dark Theme CSS Variables ────────────────────────────────── */
+:root {
+  --background: #09090b;
+  --foreground: #fafafa;
+  --surface: #0f0f14;
+  --surface-50: #18181f;
+  --surface-100: #1e1e28;
+  --surface-200: #2a2a38;
+  --surface-300: #3a3a4d;
+  --primary: #9333ea;
+  --primary-light: #a855f7;
+  --primary-dark: #7e22ce;
+  --accent: #06b6d4;
+  --accent-light: #22d3ee;
+  --muted: #71717a;
+  --border: rgba(255, 255, 255, 0.06);
+  --glass-bg: rgba(255, 255, 255, 0.03);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glow-primary: rgba(147, 51, 234, 0.4);
+  --glow-accent: rgba(6, 182, 212, 0.3);
+}
+
+/* ── Base Styles ─────────────────────────────────────────────── */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Custom Scrollbar ────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--surface-200);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--surface-300);
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-200) transparent;
+}
+
+/* ── Glassmorphism Utilities ─────────────────────────────────── */
+@layer utilities {
+  .glass {
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .glass-strong {
+    background: rgba(255, 255, 255, 0.06);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+  }
+
+  .glass-card {
+    background: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.05) 0%,
+      rgba(255, 255, 255, 0.02) 100%
+    );
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow:
+      0 8px 32px rgba(0, 0, 0, 0.3),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  }
+
+  .glass-input {
+    background: rgba(255, 255, 255, 0.04);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    transition: all 0.2s ease;
+  }
+
+  .glass-input:focus {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(147, 51, 234, 0.5);
+    box-shadow: 0 0 0 3px rgba(147, 51, 234, 0.15);
+  }
+
+  /* ── Text Glow Effects ───────────────────────────────────── */
+  .text-glow {
+    text-shadow:
+      0 0 20px rgba(147, 51, 234, 0.5),
+      0 0 40px rgba(147, 51, 234, 0.3),
+      0 0 80px rgba(147, 51, 234, 0.15);
+  }
+
+  .text-glow-accent {
+    text-shadow:
+      0 0 20px rgba(6, 182, 212, 0.5),
+      0 0 40px rgba(6, 182, 212, 0.3),
+      0 0 80px rgba(6, 182, 212, 0.15);
+  }
+
+  .text-glow-white {
+    text-shadow:
+      0 0 10px rgba(255, 255, 255, 0.4),
+      0 0 30px rgba(255, 255, 255, 0.2);
+  }
+
+  /* ── Button Glow ─────────────────────────────────────────── */
+  .btn-glow {
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s ease;
+  }
+
+  .btn-glow::before {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    background: linear-gradient(135deg, var(--primary), var(--accent));
+    border-radius: inherit;
+    z-index: -1;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    filter: blur(12px);
+  }
+
+  .btn-glow:hover::before {
+    opacity: 0.6;
+  }
+
+  /* ── Hide Scrollbar (Presentation Mode) ──────────────────── */
+  .hide-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* ── Gradient Text ───────────────────────────────────────── */
+  .gradient-text {
+    background: linear-gradient(135deg, #a855f7 0%, #22d3ee 50%, #a855f7 100%);
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+}
+
+/* ── Lyric Transition Animations ─────────────────────────────── */
+@keyframes lyric-enter {
+  0% {
+    opacity: 0;
+    transform: translateY(30px) scale(0.95);
+    filter: blur(4px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes lyric-exit {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.98);
+    filter: blur(2px);
+  }
+}
+
+@keyframes lyric-active {
+  0% {
+    text-shadow: 0 0 0 transparent;
+  }
+  50% {
+    text-shadow:
+      0 0 20px rgba(147, 51, 234, 0.4),
+      0 0 60px rgba(147, 51, 234, 0.2);
+  }
+  100% {
+    text-shadow: 0 0 0 transparent;
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
+}
+
+@keyframes wave-bar {
+  0%, 100% {
+    height: 12px;
+  }
+  50% {
+    height: 28px;
+  }
+}
+
+@layer utilities {
+  .animate-lyric-enter {
+    animation: lyric-enter 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  .animate-lyric-exit {
+    animation: lyric-exit 0.4s cubic-bezier(0.55, 0, 1, 0.45) forwards;
+  }
+
+  .animate-lyric-active {
+    animation: lyric-active 2s ease-in-out infinite;
+  }
+
+  .animate-float {
+    animation: float 3s ease-in-out infinite;
+  }
+
+  .animate-shimmer {
+    background-size: 200% auto;
+    animation: shimmer 3s linear infinite;
+  }
+
+  .animate-wave-bar {
+    animation: wave-bar 1.2s ease-in-out infinite;
+  }
+}
+
+/* ── Selection Styling ───────────────────────────────────────── */
+::selection {
+  background: rgba(147, 51, 234, 0.3);
+  color: #fafafa;
+}
+
+::-moz-selection {
+  background: rgba(147, 51, 234, 0.3);
+  color: #fafafa;
+}
