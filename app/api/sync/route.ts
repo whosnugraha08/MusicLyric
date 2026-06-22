@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+
+export const maxDuration = 60; // Extend Vercel timeout to 60 seconds (Hobby plan max)
 import { createClient } from '@supabase/supabase-js';
 
 // ────────────────────────────────────────────────────────────
