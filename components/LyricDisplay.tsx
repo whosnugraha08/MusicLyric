@@ -77,9 +77,19 @@ export default function LyricDisplay({
 
   // ── Auto‑scroll active line into center ────────────────────
   const scrollToActive = useCallback((index: number) => {
+    const container = containerRef.current;
     const el = lineRefs.current.get(index);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (container && el) {
+      const containerHeight = container.clientHeight;
+      const elTop = el.offsetTop;
+      const elHeight = el.offsetHeight;
+      
+      const targetScroll = elTop - (containerHeight / 2) + (elHeight / 2);
+      
+      container.scrollTo({
+        top: Math.max(0, targetScroll),
+        behavior: 'smooth'
+      });
     }
   }, []);
 
