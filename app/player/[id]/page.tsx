@@ -7,6 +7,7 @@ import type { Song, SyncedLine } from '@/lib/types';
 import AudioPlayer, { type AudioPlayerHandle } from '@/components/AudioPlayer';
 import LyricDisplay from '@/components/LyricDisplay';
 import DynamicBackground from '@/components/DynamicBackground';
+import ShareLyricModal from '@/components/ShareLyricModal';
 
 // ────────────────────────────────────────────────────────────
 // Page
@@ -32,6 +33,7 @@ export default function PlayerPage() {
   const [layout, setLayout] = useState<'landscape' | 'portrait'>('landscape');
   const [presentation, setPresentation] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
+  const [showShare, setShowShare] = useState(false);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Fetch song ────────────────────────────────────────────
@@ -410,6 +412,19 @@ export default function PlayerPage() {
               </button>
             </div>
           )}
+
+          {/* Share button */}
+          <button
+            onClick={() => setShowShare(true)}
+            className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-white/50 hover:text-white text-xs font-medium transition-all mt-1"
+            title="Share lirik ke Instagram / TikTok"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
+              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" /><line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+            </svg>
+            Share Lyric
+          </button>
         </div>
 
         {/* ── Right panel: Lyrics ────────────────────────── */}
@@ -447,6 +462,19 @@ export default function PlayerPage() {
           className="hidden-player"
         />
       )}
+
+      {/* ── Share Lyric Modal ─────────────────────────────── */}
+      <ShareLyricModal
+        isOpen={showShare}
+        onClose={() => setShowShare(false)}
+        song={{
+          title: song.title,
+          artist: song.artist,
+          cover_url: song.cover_url,
+          audio_url: song.audio_url,
+        }}
+        syncedLyrics={syncedLines}
+      />
     </div>
   );
 }
