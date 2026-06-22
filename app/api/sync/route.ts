@@ -154,27 +154,43 @@ async function uploadToGradio(audioBlob: Blob): Promise<string> {
 
 function parseWhisperXOutput(output: unknown, rawLyrics: string): SyncResult {
   const lines = rawLyrics.split('\n').filter(l => l.trim());
+  const outputStr = JSON.stringify(output).slice(0, 500);
 
-  // Already in SyncedLine[] format
-  if (Array.isArray(output)) {
-    if (output.length > 0 && output[0].text && output[0].words) return output;
-    if (output.length > 0 && output[0].word !== undefined) return groupWordsIntoLines(output, lines);
+  // Unwrap if nested in an array (Gradio often wraps results)
+  let data = output;
+  if (Array.isArray(data) && data.length === 1) {
+    data = data[0];
+  }
+
+  // Already in SyncedLine[] format: [{text, start, end, words}]
+  if (Array.isArray(data)) {
+    if (data.length > 0 && data[0].text !== undefined && data[0].start !== undefined) {
+      return data.map((item, i) => ({
+        text: item.text?.trim() || lines[i] || '',
+        start: item.start || 0,
+        end: item.end || 0,
+        words: Array.isArray(item.words) ? item.words.map((w: { word: string; start: number; end: number }, wi: number) => ({
+          word: w.word, start: w.start, end: w.end, line_index: item.line_index ?? i,
+        })) : [],
+      }));
+    }
+    // Flat word list: [{word, start, end, line_index}]
+    if (data.length > 0 && data[0].word !== undefined) {
+      return groupWordsIntoLines(data, lines);
+    }
   }
 
   // JSON string
-  if (typeof output === 'string') {
+  if (typeof data === 'string') {
     try {
-      const parsed = JSON.parse(output);
-      if (Array.isArray(parsed)) {
-        if (parsed.length > 0 && parsed[0].word !== undefined) return groupWordsIntoLines(parsed, lines);
-        if (parsed.length > 0 && parsed[0].text && parsed[0].words) return parsed;
-      }
-    } catch { /* not JSON */ }
+      const parsed = JSON.parse(data);
+      return parseWhisperXOutput(parsed, rawLyrics);
+    } catch { /* not JSON string */ }
   }
 
-  // Object with segments
-  if (output && typeof output === 'object' && 'segments' in output) {
-    const segments = (output as { segments: Array<{ text: string; start: number; end: number; words?: Array<{ word: string; start: number; end: number }> }> }).segments;
+  // Object with segments key
+  if (data && typeof data === 'object' && 'segments' in data) {
+    const segments = (data as { segments: Array<{ text: string; start: number; end: number; words?: Array<{ word: string; start: number; end: number }> }> }).segments;
     return segments.map((seg, i) => ({
       text: seg.text?.trim() || lines[i] || '',
       start: seg.start || 0,
@@ -183,18 +199,45 @@ function parseWhisperXOutput(output: unknown, rawLyrics: string): SyncResult {
     }));
   }
 
-  console.error('[WhisperX] Unexpected output:', JSON.stringify(output).slice(0, 500));
-  throw new Error('Unexpected output format from WhisperX');
+  // Object with word_segments key  
+  if (data && typeof data === 'object' && 'word_segments' in data) {
+    const ws = (data as { word_segments: Array<{ word: string; start: number; end: number }> }).word_segments;
+    return groupWordsIntoLines(ws.map((w, i) => ({ ...w, line_index: 0 })), lines);
+  }
+
+  throw new Error(`Unexpected output format from WhisperX. Output preview: ${outputStr}`);
 }
 
 function groupWordsIntoLines(
-  words: Array<{ word: string; start: number; end: number; line_index: number }>,
+  words: Array<{ word: string; start: number; end: number; line_index?: number }>,
   lines: string[],
 ): SyncResult {
+  // If words don't have line_index, assign them by matching against lyric lines
+  if (words.length > 0 && words[0].line_index === undefined) {
+    let wordIdx = 0;
+    const result: SyncResult = [];
+    for (let i = 0; i < lines.length; i++) {
+      const lineWords: Array<{ word: string; start: number; end: number; line_index: number }> = [];
+      const lineTokens = lines[i].toLowerCase().split(/\s+/).filter(Boolean);
+      for (let t = 0; t < lineTokens.length && wordIdx < words.length; t++, wordIdx++) {
+        lineWords.push({ ...words[wordIdx], line_index: i });
+      }
+      result.push({
+        text: lines[i],
+        start: lineWords.length > 0 ? lineWords[0].start : (result.length > 0 ? result[result.length - 1].end : 0),
+        end: lineWords.length > 0 ? lineWords[lineWords.length - 1].end : (result.length > 0 ? result[result.length - 1].end : 0),
+        words: lineWords,
+      });
+    }
+    return result;
+  }
+
+  // Normal grouping by line_index
   const lineMap = new Map<number, Array<{ word: string; start: number; end: number; line_index: number }>>();
   for (const w of words) {
-    if (!lineMap.has(w.line_index)) lineMap.set(w.line_index, []);
-    lineMap.get(w.line_index)!.push(w);
+    const idx = w.line_index ?? 0;
+    if (!lineMap.has(idx)) lineMap.set(idx, []);
+    lineMap.get(idx)!.push({ word: w.word, start: w.start, end: w.end, line_index: idx });
   }
   return lines.map((text, i) => {
     const lw = lineMap.get(i) || [];
@@ -206,3 +249,4 @@ function groupWordsIntoLines(
     };
   });
 }
+
