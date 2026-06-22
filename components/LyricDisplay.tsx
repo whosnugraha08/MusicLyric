@@ -14,6 +14,8 @@ interface LyricDisplayProps {
   currentTime: number;
   /** Highlight granularity. */
   mode: 'line' | 'word';
+  /** Callback when a lyric line is clicked */
+  onSeek?: (time: number) => void;
   className?: string;
 }
 
@@ -61,6 +63,7 @@ export default function LyricDisplay({
   syncedLyrics,
   currentTime,
   mode,
+  onSeek,
   className,
 }: LyricDisplayProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -123,7 +126,10 @@ export default function LyricDisplay({
             <div
               key={i}
               ref={setLineRef(i)}
-              className="w-full max-w-2xl text-center transition-all duration-500 ease-out"
+              onClick={onSeek && line.start !== null ? () => onSeek(line.start) : undefined}
+              className={`w-full max-w-2xl text-center transition-all duration-500 ease-out ${
+                onSeek ? 'cursor-pointer hover:opacity-100 hover:scale-105' : ''
+              }`}
               style={{
                 opacity,
                 transform: distanceScale(dist),

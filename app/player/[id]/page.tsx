@@ -315,6 +315,12 @@ export default function PlayerPage() {
             syncedLyrics={syncedLines}
             currentTime={currentTime}
             mode={lyricMode}
+            onSeek={(time) => {
+              playerRef.current?.seek(time);
+              if (!playerRef.current?.isPlaying()) {
+                playerRef.current?.play();
+              }
+            }}
           />
         </div>
       </main>
