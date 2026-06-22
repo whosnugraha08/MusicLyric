@@ -271,7 +271,7 @@ export default function PlayerPage() {
       <main
         className={`absolute inset-0 pt-16 pb-20 flex transition-all duration-500 ${
           isLandscape
-            ? 'flex-row items-center'
+            ? 'flex-row items-center max-w-7xl mx-auto w-full'
             : 'flex-col items-center'
         }`}
       >

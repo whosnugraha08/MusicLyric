@@ -87,8 +87,22 @@ export default function LyricDisplay({
     if (activeIndex >= 0 && activeIndex !== lastActiveRef.current) {
       lastActiveRef.current = activeIndex;
       scrollToActive(activeIndex);
+    } else if (activeIndex < 0 && lastActiveRef.current !== -1) {
+      lastActiveRef.current = -1;
+      scrollToActive(0);
     }
   }, [activeIndex, scrollToActive]);
+
+  // Initial scroll to first line on mount
+  useEffect(() => {
+    if (activeIndex < 0 && syncedLyrics.length > 0) {
+      // Small delay to ensure DOM is fully rendered before scrolling
+      const timer = setTimeout(() => {
+        scrollToActive(0);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [syncedLyrics.length, scrollToActive]); // Only run on mount or when lyrics array changes
 
   // ── Ref callback ──────────────────────────────────────────
   const setLineRef = useCallback(
@@ -114,8 +128,9 @@ export default function LyricDisplay({
   return (
     <div
       ref={containerRef}
-      className={`relative h-full overflow-y-auto hide-scrollbar py-[40vh] px-4 sm:px-8 ${className ?? ''}`}
+      className={`relative h-full overflow-y-auto hide-scrollbar px-4 sm:px-8 ${className ?? ''}`}
     >
+      <div className="h-[40vh] flex-shrink-0" />
       <div className="flex flex-col items-center gap-6">
         {syncedLyrics.map((line, i) => {
           const dist = activeIndex >= 0 ? i - activeIndex : i;
@@ -175,6 +190,7 @@ export default function LyricDisplay({
           );
         })}
       </div>
+      <div className="h-[40vh] flex-shrink-0" />
     </div>
   );
 }
