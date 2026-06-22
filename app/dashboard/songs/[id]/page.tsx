@@ -159,7 +159,13 @@ export default function SongDetailPage() {
         body: JSON.stringify({ songId: song.id }),
       });
 
-      const data = await response.json();
+      const text = await response.text();
+      let data: any;
+      try {
+        data = JSON.parse(text);
+      } catch (err) {
+        throw new Error(`Server returned non-JSON response (${response.status}): ${text.slice(0, 150)}...`);
+      }
 
       if (!response.ok) {
         throw new Error(data.error || 'Failed to sync with AI');
