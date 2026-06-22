@@ -82,19 +82,74 @@ export default function UploadPage() {
   );
 
   // ── Cover File Handling ────────────────────────────────
-  const handleCoverSelect = useCallback((file: File) => {
+  /** Compress image client-side to stay under Supabase's 2MB limit */
+  const compressImage = useCallback(
+    (file: File, maxSize = 1200, quality = 0.8): Promise<File> => {
+      return new Promise((resolve, reject) => {
+        const img = new window.Image();
+        img.onload = () => {
+          let { width, height } = img;
+
+          // Scale down if larger than maxSize
+          if (width > maxSize || height > maxSize) {
+            if (width > height) {
+              height = Math.round((height * maxSize) / width);
+              width = maxSize;
+            } else {
+              width = Math.round((width * maxSize) / height);
+              height = maxSize;
+            }
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return reject(new Error('Canvas not supported'));
+          ctx.drawImage(img, 0, 0, width, height);
+
+          canvas.toBlob(
+            (blob) => {
+              if (!blob) return reject(new Error('Compression failed'));
+              const compressed = new File([blob], file.name.replace(/\.\w+$/, '.jpg'), {
+                type: 'image/jpeg',
+              });
+              resolve(compressed);
+            },
+            'image/jpeg',
+            quality,
+          );
+        };
+        img.onerror = () => reject(new Error('Failed to load image'));
+        img.src = URL.createObjectURL(file);
+      });
+    },
+    [],
+  );
+
+  const handleCoverSelect = useCallback(async (file: File) => {
     const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
     if (!validTypes.includes(file.type)) {
       setError('Format gambar tidak didukung. Gunakan JPG, PNG, atau WebP.');
       return;
     }
-    setCoverFile(file);
-    setError(null);
 
-    // Generate preview
-    const url = URL.createObjectURL(file);
-    setCoverPreview(url);
-  }, []);
+    try {
+      // Compress if larger than 1.5MB
+      let processedFile = file;
+      if (file.size > 1_500_000) {
+        processedFile = await compressImage(file);
+      }
+      setCoverFile(processedFile);
+      setError(null);
+
+      // Generate preview
+      const url = URL.createObjectURL(processedFile);
+      setCoverPreview(url);
+    } catch {
+      setError('Gagal memproses gambar. Coba gambar lain.');
+    }
+  }, [compressImage]);
 
   const handleCoverDrop = useCallback(
     (e: React.DragEvent) => {
